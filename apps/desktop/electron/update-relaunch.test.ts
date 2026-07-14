@@ -204,6 +204,20 @@ test('shellQuote neutralizes single quotes and metacharacters', () => {
   assert.equal(shellQuote('$(rm -rf /)'), `'$(rm -rf /)'`)
 })
 
+// WSL2's /mnt/c DrvFs bridge can transiently miss a file that was just
+// written on the Windows side ("No such file or directory" from bash even
+// though fs.existsSync is true) — retry the lint before failing the test.
+function lintBashScript(bashScriptPath: string): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      execFileSync('bash', ['-n', bashScriptPath], { stdio: 'pipe' })
+      return
+    } catch (err) {
+      if (attempt >= 2 || !/no such file or directory/i.test(String(err.stderr))) throw err
+    }
+  }
+}
+
 test('buildRelaunchScript embeds pid/exec/args/env/cwd and is valid bash', () => {
   const script = buildRelaunchScript({
     pid: 4242,
@@ -229,7 +243,7 @@ test('buildRelaunchScript embeds pid/exec/args/env/cwd and is valid bash', () =>
   fs.writeFileSync(tmp, script)
 
   try {
-    execFileSync('bash', ['-n', bashPath(tmp)], { stdio: 'pipe' })
+    lintBashScript(bashPath(tmp))
   } finally {
     fs.rmSync(tmp, { force: true })
   }
@@ -248,7 +262,7 @@ test('buildRelaunchScript with no args/env still lints clean', () => {
   fs.writeFileSync(tmp, script)
 
   try {
-    execFileSync('bash', ['-n', bashPath(tmp)], { stdio: 'pipe' })
+    lintBashScript(bashPath(tmp))
   } finally {
     fs.rmSync(tmp, { force: true })
   }
